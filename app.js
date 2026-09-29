@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const D = window.AnahataDSP;
   const BOARD_NAME = 'AiiraECG';
   const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -263,6 +263,22 @@
     await openBle(device, true);
   }
 
+  // Runs one step of connecting, names it on the screen, and gives up after a set time.
+  function step(text, promise, seconds) {
+    say(text);
+    let timer;
+    const limit = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error('no response after ' + seconds + ' s');
+        err.stage = text;
+        reject(err);
+      }, seconds * 1000);
+    });
+    return Promise.race([promise, limit]).then(
+      v => { clearTimeout(timer); return v; },
+      e => { clearTimeout(timer); if (!e.stage) e.stage = text; throw e; });
+  }
+
   async function openBle(device, fresh) {
     const parser = new D.Parser();
     let info = null, uvPerCount = 0, expect = null, closed = false, rx = null;
@@ -287,19 +303,28 @@
     };
 
     try {
-      say('Connecting…');
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(NUS);
-      const tx = await service.getCharacteristic(NUS_TX);
-      rx = await service.getCharacteristic(NUS_RX);
+      let server;
+      try {
+        server = await step('Step 1 of 4: connecting to the board…', device.gatt.connect(), 12);
+      } catch (first) {  // Android sometimes needs a second attempt
+        try { device.gatt.disconnect(); } catch (e) { /* nothing to drop */ }
+        await new Promise(r => setTimeout(r, 1000));
+        server = await step('Step 1 of 4: connecting to the board, second attempt…', device.gatt.connect(), 15);
+      }
+      const service = await step('Step 2 of 4: finding the data service…', server.getPrimaryService(NUS), 12);
+      const tx = await step('Step 2 of 4: finding the data service…', service.getCharacteristic(NUS_TX), 8);
+      rx = await step('Step 2 of 4: finding the data service…', service.getCharacteristic(NUS_RX), 8);
       tx.addEventListener('characteristicvaluechanged', onData);
-      await tx.startNotifications();
-      await rx.writeValue(new Uint8Array([0x62]));  // 'b': frames
-      await rx.writeValue(new Uint8Array([0x69]));  // 'i': info
-      for (let k = 0; k < 30 && !info; k++) await new Promise(r => setTimeout(r, 100));
+      await step('Step 3 of 4: switching on the data stream…', tx.startNotifications(), 10);
+      await step('Step 3 of 4: switching on the data stream…', rx.writeValueWithResponse(new Uint8Array([0x62])), 8);  // 'b': frames
+      await step('Step 4 of 4: waiting for the board to answer…', rx.writeValueWithResponse(new Uint8Array([0x69])), 8);  // 'i': info
+      for (let k = 0; k < 40 && !info; k++) {
+        if (k === 15) rx.writeValueWithResponse(new Uint8Array([0x69])).catch(() => {});  // ask once more
+        await new Promise(r => setTimeout(r, 100));
+      }
       if (!info || !parseFloat(info.fs) || !parseFloat(info.uv_per_count)) {
         device.gatt.disconnect();
-        say('The board connected but did not answer. Load the Anahata firmware onto it.');
+        say('Step 4 of 4 failed: the board connected but did not answer. Load the Anahata firmware onto it.');
         return;
       }
       state.title = (info.name || BOARD_NAME) + ' over Bluetooth · firmware ' + (info.fw || '?');
@@ -308,7 +333,9 @@
       else { source = state; ui.source.textContent = state.title + ' · ' + fs + ' samples/s'; say('Reconnected.'); }
       uvPerCount = parseFloat(info.uv_per_count);
     } catch (err) {
-      say('The connection failed: ' + err.message);
+      try { device.gatt.disconnect(); } catch (e) { /* nothing to drop */ }
+      say((err.stage ? err.stage.replace('…', '') + ' failed: ' : 'The connection failed: ') + err.message +
+          '. Close other apps that use the board, switch the phone\'s Bluetooth off and on, then press Connect.');
       return;
     }
 
