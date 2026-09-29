@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0D1512">
+<title>Anahata</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0D1512; --panel:#14201A; --line:#25362D; --text:#E4EEE8; --muted:#8DA397;
+  --ecg:#5BD68A; --resp:#E8B45A; --warn:#FF6E5E; --mark:#9CC9FF; --btn:#1D2D25; --btn-on:#2F4539;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:12px;padding-block:10px 24px;display:grid;gap:10px}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-size:20px;margin:0;color:var(--ecg);font-weight:650;letter-spacing:.2px}
+.source{color:var(--muted);font-size:12.5px;flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+button{font:inherit;color:var(--text);background:var(--btn);border:1px solid var(--line);border-radius:8px;padding:9px 14px;min-height:42px;cursor:pointer}
+button:hover{background:#26392F}
+button:active{background:var(--btn-on)}
+button:disabled{color:#5B6C62;background:#172119;cursor:default}
+button:focus-visible{outline:2px solid var(--ecg);outline-offset:2px}
+button.primary{border-color:var(--ecg)}
+button.rec[aria-pressed="true"]{background:#6B1F1A;border-color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.cap{color:var(--muted);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase}
+.val{font-size:34px;font-weight:650;line-height:1.1;font-variant-numeric:tabular-nums}
+.val.small{font-size:19px;line-height:1.75}
+.unit{color:var(--muted);font-size:11.5px}
+#hr{color:var(--ecg)} #br{color:var(--resp)}
+.plot{background:var(--bg);border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden}
+.plot canvas{display:block;width:100%}
+#ecgCanvas{height:38vh;min-height:200px;max-height:420px}
+#respCanvas{height:20vh;min-height:120px;max-height:220px}
+.plot .title{position:absolute;left:10px;top:6px;color:var(--muted);font-size:11.5px;pointer-events:none}
+.note{color:var(--muted);font-size:12.5px;min-height:18px}
+.view{align-items:center}
+.view .grow{flex:1 1 0}
+.view button{padding:7px 12px;min-height:38px}
+.check{display:inline-flex;align-items:center;gap:7px;min-height:38px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--ecg)}
+select{font:inherit;color:var(--text);background:var(--btn);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-height:38px;max-width:100%}
+select:disabled{color:#5B6C62;background:#172119}
+select:focus-visible,.check input:focus-visible{outline:2px solid var(--ecg);outline-offset:2px}
+.alert{border:1px solid var(--warn);border-radius:8px;padding:10px 12px;background:var(--panel)}
+.alert b{color:var(--warn)}
+.poses button{padding:7px 12px;min-height:38px;font-size:13.5px}
+input[type=text]{font:inherit;color:var(--text);background:var(--btn);border:1px solid var(--line);border-radius:8px;padding:9px 12px;min-height:42px;flex:1 1 160px;min-width:0}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;max-width:min(680px,94vw);width:100%}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{margin:0 0 4px;font-size:17px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:13.5px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+footer{color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media (max-width:520px){
+  .readouts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .val{font-size:38px}
+}
+@media (orientation:landscape) and (max-height:520px){
+  #ecgCanvas{height:52vh} #respCanvas{height:30vh}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Anahata</h1>
+    <div class="source" id="source">Connect to the board, or try the demo signal</div>
+    <button id="btnConnect" class="primary">Connect</button>
+    <button id="btnDisconnect" hidden>Disconnect</button>
+  </header>
+
+  <div class="alert" id="noBle" hidden>
+    <b>This browser cannot use Bluetooth.</b>
+    On Android, open this page in Chrome. On an iPhone, open it in the Bluefy browser. The demo signal and saved recordings work in any browser.
+  </div>
+
+  <section class="readouts" aria-live="off">
+    <div class="tile"><div class="cap">Heart rate</div><div class="val" id="hr">--</div><div class="unit">beats/min</div></div>
+    <div class="tile"><div class="cap">Breathing</div><div class="val" id="br">--</div><div class="unit">breaths/min</div></div>
+    <div class="tile"><div class="cap">Signal</div><div class="val small" id="status">Idle</div><div class="unit" id="statusNote">&nbsp;</div></div>
+    <div class="tile"><div class="cap">Elapsed</div><div class="val small" id="elapsed">0:00</div><div class="unit" id="lost">&nbsp;</div></div>
+  </section>
+
+  <div class="row view">
+    <label class="check"><input type="checkbox" id="autoScale" checked> Auto scale</label>
+    <select id="ecgRange" disabled aria-label="ECG scale while auto scale is off">
+      <option value="">Hold current scale</option>
+      <option value="250">ECG ± 250 µV</option>
+      <option value="500">ECG ± 500 µV</option>
+      <option value="1000">ECG ± 1 mV</option>
+      <option value="2000">ECG ± 2 mV</option>
+    </select>
+    <span class="grow"></span>
+    <button id="btnClear">Clear traces</button>
+  </div>
+
+  <div class="plot"><div class="title" id="ecgTitle">ECG</div><canvas id="ecgCanvas"></canvas></div>
+  <div class="plot"><div class="title" id="respTitle">Respiration</div><canvas id="respCanvas"></canvas></div>
+
+  <div class="row">
+    <button id="btnRecord" class="rec" aria-pressed="false" disabled>Start recording</button>
+    <button id="btnSummary" disabled>Summary</button>
+    <button id="btnSave" disabled>Save recording</button>
+    <button id="btnDemo">Demo signal</button>
+    <button id="btnOpen">Open recording</button>
+    <input type="file" id="file" accept=".csv,text/csv" hidden>
+  </div>
+
+  <div class="row">
+    <input type="text" id="label" placeholder="Label for the recording (optional)" autocomplete="off">
+  </div>
+
+  <div>
+    <div class="cap" style="margin-bottom:6px">Mark a pose</div>
+    <div class="row poses" id="poses"></div>
+  </div>
+
+  <div class="note" id="note" role="status"></div>
+
+  <footer>
+    <span id="version"></span>
+    <span>Demonstration only. Not a medical device.</span>
+  </footer>
+</div>
+
+<dialog id="summaryDialog">
+  <h2>Session summary</h2>
+  <div class="note" id="summaryTitle"></div>
+  <div class="tbl"><table id="summaryTable"></table></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end">
+    <button id="btnCopy">Copy</button>
+    <button id="btnClose" class="primary">Close</button>
+  </div>
+</dialog>
+
+<script src="dsp.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
