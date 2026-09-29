@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const D = window.AnahataDSP;
   const BOARD_NAME = 'AiiraECG';
   const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -316,10 +316,9 @@
       rx = await step('Step 2 of 4: finding the data service…', service.getCharacteristic(NUS_RX), 8);
       tx.addEventListener('characteristicvaluechanged', onData);
       await step('Step 3 of 4: switching on the data stream…', tx.startNotifications(), 10);
-      await step('Step 3 of 4: switching on the data stream…', rx.writeValueWithResponse(new Uint8Array([0x62])), 8);  // 'b': frames
       await step('Step 4 of 4: waiting for the board to answer…', rx.writeValueWithResponse(new Uint8Array([0x69])), 8);  // 'i': info
-      for (let k = 0; k < 40 && !info; k++) {
-        if (k === 15) rx.writeValueWithResponse(new Uint8Array([0x69])).catch(() => {});  // ask once more
+      for (let k = 0; k < 50 && !info; k++) {
+        if (k === 15 || k === 30) rx.writeValueWithResponse(new Uint8Array([0x69])).catch(() => {});  // ask again
         await new Promise(r => setTimeout(r, 100));
       }
       if (!info || !parseFloat(info.fs) || !parseFloat(info.uv_per_count)) {
@@ -327,6 +326,13 @@
         say('Step 4 of 4 failed: the board connected but did not answer. Load the Anahata firmware onto it.');
         return;
       }
+      if (info.mtu && parseInt(info.mtu, 10) < 80) {
+        device.gatt.disconnect();
+        say('The phone kept the Bluetooth packets too small for the ECG stream (size ' + info.mtu +
+            '). Switch the phone\'s Bluetooth off and on, then press Connect.');
+        return;
+      }
+      await step('Step 4 of 4: starting the ECG stream…', rx.writeValueWithResponse(new Uint8Array([0x62])), 8);  // 'b': frames
       state.title = (info.name || BOARD_NAME) + ' over Bluetooth · firmware ' + (info.fw || '?');
       const fs = parseFloat(info.fs);
       if (fresh || !pipe || pipe.fs !== fs) begin(fs, state);

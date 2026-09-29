@@ -1,5 +1,5 @@
 // Keeps Anahata working without a network connection after the first visit.
-const CACHE = 'anahata-web-0.2.1';
+const CACHE = 'anahata-web-0.2.2';
 const FILES = ['./', 'index.html', 'app.js', 'dsp.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', event => {
