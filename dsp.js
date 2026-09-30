@@ -290,7 +290,7 @@
   }
 
   // ---- the board's frame format (see Firmware/anahata_fw)
-  const TYPE_DATA = 1, TYPE_INFO = 2, FLAG_PLUS_OFF = 1, FLAG_MINUS_OFF = 2;
+  const TYPE_DATA = 1, TYPE_INFO = 2, TYPE_STATUS = 3, FLAG_PLUS_OFF = 1, FLAG_MINUS_OFF = 2;
 
   class Parser {
     constructor() { this.buf = []; this.bad = 0; }
@@ -329,6 +329,12 @@
   function int24(p, i) {
     const v = p[i] | (p[i + 1] << 8) | (p[i + 2] << 16);
     return v & 0x800000 ? v - 0x1000000 : v;
+  }
+
+  function decodeStatus(p) {
+    const u32 = i => (p[i] | (p[i + 1] << 8) | (p[i + 2] << 16) | (p[i + 3] << 24)) >>> 0;
+    return { batteryMv: p[0] | (p[1] << 8), batteryPct: p[2], charging: !!(p[3] & 1), usbPower: !!(p[3] & 2),
+             restarts: u32(4), skipped: u32(8) };
   }
 
   function decodeData(p) {
@@ -392,8 +398,8 @@
   }
 
   const api = { Biquad, Chain, BeatDetector, HeartRate, BreathRate, SignalStatus, Pipeline, Parser,
-                decodeInfo, decodeData, summary, DemoSignal, median,
-                TYPE_DATA, TYPE_INFO, FLAG_PLUS_OFF, FLAG_MINUS_OFF };
+                decodeInfo, decodeData, decodeStatus, summary, DemoSignal, median,
+                TYPE_DATA, TYPE_INFO, TYPE_STATUS, FLAG_PLUS_OFF, FLAG_MINUS_OFF };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AnahataDSP = api;
 })(typeof self !== 'undefined' ? self : this);

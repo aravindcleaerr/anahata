@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.3.0';
   const D = window.AnahataDSP;
   const BOARD_NAME = 'AiiraECG';
   const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -164,6 +164,7 @@
   let lost = 0;
   let wakeLock = null;
   let lastSummary = null;
+  let boardStatus = null; // the board's latest status frame
 
   function say(text) { ui.note.textContent = text || ''; }
 
@@ -195,6 +196,7 @@
     pendingMark = '';
     lost = 0;
     rec = null;
+    boardStatus = null;
     lastSummary = null;
     const s = spans();
     ecgPlot.configure(fs, s.ecg);
@@ -298,6 +300,7 @@
       const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
       for (const f of parser.feed(bytes)) {
         if (f.type === D.TYPE_INFO) { info = D.decodeInfo(f.payload); }
+        else if (f.type === D.TYPE_STATUS) { if (source === state) boardStatus = D.decodeStatus(f.payload); }
         else if (f.type === D.TYPE_DATA && uvPerCount && source === state) {
           const d = D.decodeData(f.payload);
           if (expect !== null && d.index > expect) lost += d.index - expect;
@@ -529,7 +532,13 @@
     if (!pipe || !source) return;
     const t = Math.floor(pipe.time);
     ui.elapsed.textContent = Math.floor(t / 60) + ':' + pad(t % 60);
-    ui.lost.textContent = lost ? lost + ' samples lost' : ' ';
+    const parts = [];
+    if (boardStatus) {
+      parts.push('Battery ' + boardStatus.batteryPct + '%' + (boardStatus.charging ? ', charging' : boardStatus.usbPower ? ', on USB' : ''));
+    }
+    if (lost) parts.push(lost + ' samples lost');
+    ui.lost.textContent = parts.length ? parts.join(' · ') : ' ';
+    ui.lost.style.color = boardStatus && boardStatus.batteryPct < 15 && !boardStatus.charging ? COLORS.warn : '';
     if (ui.status.textContent === 'Disconnected' && source.kind === 'ble') return;
     const off = pipe.contactLost;
     const hr = off ? null : pipe.heartRate();
