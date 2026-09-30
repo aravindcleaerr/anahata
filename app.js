@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const D = window.AnahataDSP;
   const BOARD_NAME = 'AiiraECG';
   const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -15,7 +15,7 @@
 
   const $ = id => document.getElementById(id);
   const ui = {};
-  ['source', 'btnConnect', 'btnDisconnect', 'noBle', 'hr', 'br', 'status', 'statusNote', 'elapsed', 'lost',
+  ['source', 'btnConnect', 'btnDisconnect', 'btnReset', 'noBle', 'hr', 'br', 'status', 'statusNote', 'elapsed', 'lost',
    'ecgCanvas', 'respCanvas', 'ecgTitle', 'respTitle', 'btnRecord', 'btnSummary', 'btnSave', 'btnDemo',
    'btnOpen', 'file', 'label', 'poses', 'note', 'version', 'summaryDialog', 'summaryTitle', 'summaryTable',
    'btnCopy', 'btnClose', 'autoScale', 'ecgRange', 'btnClear'].forEach(id => { ui[id] = $(id); });
@@ -208,6 +208,7 @@
     ui.btnSave.disabled = true;
     ui.btnConnect.hidden = src.kind === 'ble';
     ui.btnDisconnect.hidden = src.kind !== 'ble';
+    ui.btnReset.hidden = src.kind !== 'ble';
     setPoses(src.live);
     say(src.live ? '' : (src.kind === 'demo' ? 'This is a made-up signal, not a person.' : 'Replaying a saved recording.'));
     keepAwake(true);
@@ -220,6 +221,7 @@
     ui.source.textContent = 'Connect to the board, or try the demo signal';
     ui.btnConnect.hidden = false;
     ui.btnDisconnect.hidden = true;
+    ui.btnReset.hidden = true;
     ui.btnRecord.disabled = true;
     setPoses(false);
     ui.hr.textContent = '--';
@@ -282,7 +284,10 @@
   async function openBle(device, fresh) {
     const parser = new D.Parser();
     let info = null, uvPerCount = 0, expect = null, closed = false, rx = null;
-    const state = { kind: 'ble', live: true, title: BOARD_NAME + ' over Bluetooth', stop: () => {
+    const state = { kind: 'ble', live: true, title: BOARD_NAME + ' over Bluetooth', reset: () => {
+      if (!rx) return Promise.reject(new Error('not connected'));
+      return rx.writeValueWithResponse(new Uint8Array([0x72]));  // 'r': set the ECG chip up again
+    }, stop: () => {
       closed = true;
       try { if (rx) rx.writeValueWithoutResponse(new Uint8Array([0x74])).catch(() => {}); } catch (e) { /* link already gone */ }
       try { if (device.gatt.connected) device.gatt.disconnect(); } catch (e) { /* link already gone */ }
@@ -578,6 +583,11 @@
   ui.btnClear.addEventListener('click', clearTraces);
   ui.btnConnect.addEventListener('click', connectBle);
   ui.btnDisconnect.addEventListener('click', () => idle('Disconnected.'));
+  ui.btnReset.addEventListener('click', () => {
+    if (!source || !source.reset) return;
+    source.reset().then(() => { clearTraces(); say('Asked the board to set its ECG chip up again. The signal returns within a few seconds.'); },
+                        () => say('The board could not be reached.'));
+  });
   ui.btnDemo.addEventListener('click', startDemo);
   ui.btnOpen.addEventListener('click', () => ui.file.click());
   ui.file.addEventListener('change', () => { if (ui.file.files[0]) openFile(ui.file.files[0]); ui.file.value = ''; });
